@@ -1,0 +1,346 @@
+#import "MenuManager.h"
+#import <Foundation/Foundation.h>
+
+@interface MenuManager () <UIGestureRecognizerDelegate, UITextFieldDelegate>
+@property (nonatomic, strong) UIWindow *menuWindow;
+@property (nonatomic, strong) UIView *mainMenuView;
+@property (nonatomic, strong) UIButton *floatingCaptureButton;
+@property (nonatomic, strong) UITextView *resultTextView;
+@property (nonatomic, strong) UITextField *apiKeyTextField;
+@property (nonatomic, assign) BOOL isMenuVisible;
+@end
+
+@implementation MenuManager
+
++ (instancetype)sharedInstance {
+    static MenuManager *sharedInstance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sharedInstance = [[MenuManager alloc] init];
+    });
+    return sharedInstance;
+}
+
+- (void)setupGesture {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
+        if (!keyWindow) return;
+        
+        UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTripleTap:)];
+        tapGesture.numberOfTapsRequired = 3;
+        tapGesture.delegate = self;
+        [keyWindow addGestureRecognizer:tapGesture];
+    });
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return YES;
+}
+
+- (void)handleTripleTap:(UITapGestureRecognizer *)sender {
+    if (sender.state == UIGestureRecognizerStateEnded) {
+        [self toggleMenu];
+    }
+}
+
+- (void)toggleMenu {
+    self.isMenuVisible = !self.isMenuVisible;
+    if (self.isMenuVisible) {
+        [self showMenu];
+    } else {
+        [self hideMenu];
+    }
+}
+
+- (void)showMenu {
+    if (self.menuWindow) {
+        self.menuWindow.hidden = NO;
+        // Cập nhật lại key đã lưu nếu có
+        NSString *savedKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"CoccocGeminiApiKey"];
+        if (savedKey) {
+            self.apiKeyTextField.text = savedKey;
+        }
+        return;
+    }
+    
+    UIWindowScene *scene = nil;
+    for (UIScene *s in [UIApplication sharedApplication].connectedScenes) {
+        if ([s isKindOfClass:[UIWindowScene class]]) {
+            scene = (UIWindowScene *)s;
+            break;
+        }
+    }
+    
+    if (scene) {
+        self.menuWindow = [[UIWindow alloc] initWithWindowScene:scene];
+    } else {
+        self.menuWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    }
+    
+    self.menuWindow.windowLevel = UIWindowLevelAlert + 100;
+    self.menuWindow.backgroundColor = [UIColor clearColor];
+    
+    UIViewController *vc = [[UIViewController alloc] init];
+    vc.view.backgroundColor = [UIColor clearColor];
+    self.menuWindow.rootViewController = vc;
+    
+    CGFloat width = 320;
+    CGFloat height = 460;
+    self.mainMenuView = [[UIView alloc] initWithFrame:CGRectMake(([UIScreen mainScreen].bounds.size.width - width)/2, ([UIScreen mainScreen].bounds.size.height - height)/2, width, height)];
+    self.mainMenuView.backgroundColor = [UIColor colorWithRed:0.1 green:0.1 blue:0.1 alpha:0.95];
+    self.mainMenuView.layer.cornerRadius = 16;
+    self.mainMenuView.layer.borderWidth = 1.0;
+    self.mainMenuView.layer.borderColor = [UIColor colorWithRed:0.2 green:0.6 blue:1.0 alpha:1.0].CGColor;
+    self.mainMenuView.clipsToBounds = YES;
+    
+    // Title
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(15, 15, width - 30, 30)];
+    titleLabel.text = @"Cốc Cốc AI Menu";
+    titleLabel.textColor = [UIColor whiteColor];
+    titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    titleLabel.textAlignment = NSTextAlignmentCenter;
+    [self.mainMenuView addSubview:titleLabel];
+    
+    // API Key Input Section
+    UILabel *apiKeyLabel = [[UILabel alloc] initWithFrame:CGRectMake(15, 55, width - 30, 20)];
+    apiKeyLabel.text = @"Gemini API Key:";
+    apiKeyLabel.textColor = [UIColor colorWithRed:0.8 green:0.8 blue:0.8 alpha:1.0];
+    apiKeyLabel.font = [UIFont systemFontOfSize:13];
+    [self.mainMenuView addSubview:apiKeyLabel];
+    
+    self.apiKeyTextField = [[UITextField alloc] initWithFrame:CGRectMake(15, 78, width - 30, 36)];
+    self.apiKeyTextField.backgroundColor = [UIColor colorWithRed:0.2 green:0.2 blue:0.2 alpha:1.0];
+    self.apiKeyTextField.textColor = [UIColor whiteColor];
+    self.apiKeyTextField.font = [UIFont systemFontOfSize:13];
+    self.apiKeyTextField.placeholder = @"Dán API Key vào đây...";
+    self.apiKeyTextField.borderStyle = UITextBorderStyleRoundedRect;
+    self.apiKeyTextField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    self.apiKeyTextField.delegate = self;
+    
+    // Tải key đã lưu trước đó nếu có
+    NSString *savedKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"CoccocGeminiApiKey"];
+    if (savedKey) {
+        self.apiKeyTextField.text = savedKey;
+    }
+    [self.mainMenuView addSubview:self.apiKeyTextField];
+    
+    // Switch for Floating Button
+    UILabel *switchLabel = [[UILabel alloc] initWithFrame:CGRectMake(15, 125, 180, 30)];
+    switchLabel.text = @"Hiện nút 'Chụp'";
+    switchLabel.textColor = [UIColor whiteColor];
+    switchLabel.font = [UIFont systemFontOfSize:15];
+    [self.mainMenuView addSubview:switchLabel];
+    
+    UISwitch *captureSwitch = [[UISwitch alloc] initWithFrame:CGRectMake(width - 75, 125, 50, 30)];
+    [captureSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.mainMenuView addSubview:captureSwitch];
+    
+    // Result Text View
+    self.resultTextView = [[UITextView alloc] initWithFrame:CGRectMake(15, 170, width - 30, height - 230)];
+    self.resultTextView.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.5];
+    self.resultTextView.textColor = [UIColor greenColor];
+    self.resultTextView.font = [UIFont fontWithName:@"Courier" size:13];
+    self.resultTextView.editable = NO;
+    self.resultTextView.layer.cornerRadius = 8;
+    self.resultTextView.text = @"Nhập API Key ở trên, bật nút 'Chụp' và bấm để AI phân tích đáp án...";
+    [self.mainMenuView addSubview:self.resultTextView];
+    
+    // Close Button
+    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    closeBtn.frame = CGRectMake(width - 50, 10, 40, 40);
+    [closeBtn setTitle:@"✕" forState:UIControlStateNormal];
+    [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
+    closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:18];
+    [closeBtn addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
+    [self.mainMenuView addSubview:closeBtn];
+    
+    // Thêm cử chỉ chạm bên ngoài để ẩn bàn phím
+    UITapGestureRecognizer *dismissKeyboardGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
+    dismissKeyboardGesture.cancelsTouchesInView = NO;
+    [vc.view addGestureRecognizer:dismissKeyboardGesture];
+    
+    [vc.view addSubview:self.mainMenuView];
+    self.menuWindow.hidden = NO;
+}
+
+- (void)hideMenu {
+    [self dismissKeyboard];
+    self.menuWindow.hidden = YES;
+}
+
+- (void)dismissKeyboard {
+    [self.apiKeyTextField resignFirstResponder];
+}
+
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    [textField resignFirstResponder];
+    // Lưu key khi nhấn Return
+    [[NSUserDefaults standardUserDefaults] setObject:textField.text forKey:@"CoccocGeminiApiKey"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    return YES;
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)textField {
+    // Lưu key khi kết thúc nhập
+    [[NSUserDefaults standardUserDefaults] setObject:textField.text forKey:@"CoccocGeminiApiKey"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (void)switchChanged:(UISwitch *)sender {
+    if (sender.isOn) {
+        [self showFloatingButton];
+    } else {
+        [self hideFloatingButton];
+    }
+}
+
+- (void)showFloatingButton {
+    if (self.floatingCaptureButton) {
+        self.floatingCaptureButton.hidden = NO;
+        return;
+    }
+    
+    self.floatingCaptureButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.floatingCaptureButton.frame = CGRectMake(20, 150, 65, 65);
+    [self.floatingCaptureButton setTitle:@"Chụp" forState:UIControlStateNormal];
+    [self.floatingCaptureButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    self.floatingCaptureButton.backgroundColor = [UIColor colorWithRed:0.0 green:0.5 blue:1.0 alpha:0.9];
+    self.floatingCaptureButton.layer.cornerRadius = 32.5;
+    self.floatingCaptureButton.layer.shadowColor = [UIColor blackColor].CGColor;
+    self.floatingCaptureButton.layer.shadowOffset = CGSizeMake(0, 3);
+    self.floatingCaptureButton.layer.shadowOpacity = 0.5;
+    self.floatingCaptureButton.layer.shadowRadius = 4;
+    
+    [self.floatingCaptureButton addTarget:self action:@selector(captureAndAnalyze) forControlEvents:UIControlEventTouchUpInside];
+    
+    UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    [self.floatingCaptureButton addGestureRecognizer:pan];
+    
+    if (self.menuWindow && self.menuWindow.rootViewController) {
+        [self.menuWindow.rootViewController.view addSubview:self.floatingCaptureButton];
+    }
+}
+
+- (void)hideFloatingButton {
+    self.floatingCaptureButton.hidden = YES;
+}
+
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    CGPoint translation = [pan translationInView:self.menuWindow.rootViewController.view];
+    CGPoint center = pan.view.center;
+    pan.view.center = CGPointMake(center.x + translation.x, center.y + translation.y);
+    [pan setTranslation:CGPointZero inView:self.menuWindow.rootViewController.view];
+}
+
+- (void)captureAndAnalyze {
+    // Lưu key ngay lập tức trước khi chụp
+    if (self.apiKeyTextField.text.length > 0) {
+        [[NSUserDefaults standardUserDefaults] setObject:self.apiKeyTextField.text forKey:@"CoccocGeminiApiKey"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+    }
+    
+    NSString *apiKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"CoccocGeminiApiKey"];
+    if (!apiKey || apiKey.length == 0) {
+        self.resultTextView.text = @"Lỗi: Bạn chưa nhập Gemini API Key trong Menu!";
+        return;
+    }
+    
+    self.resultTextView.text = @"Đang chụp màn hình và gửi cho Gemini AI...";
+    
+    self.floatingCaptureButton.hidden = YES;
+    if (self.menuWindow) self.menuWindow.hidden = YES;
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIWindow *keyWindow = [UIApplication sharedApplication].keyWindow;
+        UIGraphicsBeginImageContextWithOptions(keyWindow.bounds.size, NO, [UIScreen mainScreen].scale);
+        [keyWindow drawViewHierarchyInRect:keyWindow.bounds afterScreenUpdates:YES];
+        UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        
+        if (self.menuWindow) self.menuWindow.hidden = NO;
+        self.floatingCaptureButton.hidden = NO;
+        
+        if (!image) {
+            self.resultTextView.text = @"Lỗi: Không thể chụp màn hình!";
+            return;
+        }
+        
+        NSData *imageData = UIImageJPEGRepresentation(image, 0.7);
+        NSString *base64Image = [imageData base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
+        
+        [self sendImageToGemini:base64Image apiKey:apiKey];
+    });
+}
+
+- (void)sendImageToGemini:(NSString *)base64Image apiKey:(NSString *)apiKey {
+    NSString *urlString = [NSString stringWithFormat:@"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%@", apiKey];
+    
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    [request setHTTPMethod:@"POST"];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    
+    NSDictionary *jsonBody = @{
+        @"contents": @[
+            @{
+                @"parts": @[
+                    @{@"text": @"Hãy phân tích hình ảnh màn hình này, tìm câu hỏi và đưa ra đáp án chính xác nhất bằng tiếng Việt một cách ngắn gọn, súc tích."},
+                    @{
+                        @"inline_data": @{
+                            @"mime_type": @"image/jpeg",
+                            @"data": base64Image
+                        }
+                    }
+                ]
+            }
+        ]
+    };
+    
+    NSError *error;
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:jsonBody options:0 error:&error];
+    if (error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.resultTextView.text = [NSString stringWithFormat:@"Lỗi JSON: %@", error.localizedDescription];
+        });
+        return;
+    }
+    
+    [request setHTTPBody:jsonData];
+    
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                self.resultTextView.text = [NSString stringWithFormat:@"Lỗi mạng: %@", error.localizedDescription];
+                return;
+            }
+            
+            NSError *jsonError;
+            NSDictionary *jsonResponse = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            if (jsonError) {
+                self.resultTextView.text = [NSString stringWithFormat:@"Lỗi phân tích phản hồi: %@", jsonError.localizedDescription];
+                return;
+            }
+            
+            NSArray *candidates = jsonResponse[@"candidates"];
+            if (candidates && candidates.count > 0) {
+                NSDictionary *content = candidates[0][@"content"];
+                NSArray *parts = content[@"parts"];
+                if (parts && parts.count > 0) {
+                    NSString *answerText = parts[0][@"text"];
+                    self.resultTextView.text = answerText ?: @"Không nhận được nội dung phản hồi từ AI.";
+                    return;
+                }
+            }
+            
+            self.resultTextView.text = [NSString stringWithFormat:@"Phản hồi không hợp lệ: %@", jsonResponse];
+        });
+    }];
+    
+    [task resume];
+}
+
+@end
+
+__attribute__((constructor)) static void entry() {
+    [[MenuManager sharedInstance] setupGesture];
+}

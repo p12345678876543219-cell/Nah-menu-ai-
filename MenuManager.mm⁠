@@ -55,7 +55,6 @@
 - (void)showMenu {
     if (self.menuWindow) {
         self.menuWindow.hidden = NO;
-        // Cập nhật lại key đã lưu nếu có
         NSString *savedKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"CoccocGeminiApiKey"];
         if (savedKey) {
             self.apiKeyTextField.text = savedKey;
@@ -117,7 +116,6 @@
     self.apiKeyTextField.clearButtonMode = UITextFieldViewModeWhileEditing;
     self.apiKeyTextField.delegate = self;
     
-    // Tải key đã lưu trước đó nếu có
     NSString *savedKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"CoccocGeminiApiKey"];
     if (savedKey) {
         self.apiKeyTextField.text = savedKey;
@@ -154,7 +152,6 @@
     [closeBtn addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
     [self.mainMenuView addSubview:closeBtn];
     
-    // Thêm cử chỉ chạm bên ngoài để ẩn bàn phím
     UITapGestureRecognizer *dismissKeyboardGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboard)];
     dismissKeyboardGesture.cancelsTouchesInView = NO;
     [vc.view addGestureRecognizer:dismissKeyboardGesture];
@@ -174,14 +171,12 @@
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
     [textField resignFirstResponder];
-    // Lưu key khi nhấn Return
     [[NSUserDefaults standardUserDefaults] setObject:textField.text forKey:@"CoccocGeminiApiKey"];
     [[NSUserDefaults standardUserDefaults] synchronize];
     return YES;
 }
 
 - (void)textFieldDidEndEditing:(UITextField *)textField {
-    // Lưu key khi kết thúc nhập
     [[NSUserDefaults standardUserDefaults] setObject:textField.text forKey:@"CoccocGeminiApiKey"];
     [[NSUserDefaults standardUserDefaults] synchronize];
 }
@@ -233,7 +228,6 @@
 }
 
 - (void)captureAndAnalyze {
-    // Lưu key ngay lập tức trước khi chụp
     if (self.apiKeyTextField.text.length > 0) {
         [[NSUserDefaults standardUserDefaults] setObject:self.apiKeyTextField.text forKey:@"CoccocGeminiApiKey"];
         [[NSUserDefaults standardUserDefaults] synchronize];

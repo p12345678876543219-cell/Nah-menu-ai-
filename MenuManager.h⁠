@@ -1,0 +1,6 @@
+#import <UIKit/UIKit.h>
+
+@interface MenuManager : NSObject
++ (instancetype)sharedInstance;
+- (void)setupGesture;
+@end
